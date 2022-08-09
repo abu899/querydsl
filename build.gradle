@@ -1,3 +1,9 @@
+buildscript {
+	ext {
+		queryDslVersion = "5.0.0"
+	}
+}
+
 plugins {
 	id 'org.springframework.boot' version '2.7.2'
 	id 'io.spring.dependency-management' version '1.0.12.RELEASE'
@@ -29,9 +35,10 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
 	//querydsl 추가
-	implementation 'com.querydsl:querydsl-jpa'
+	implementation "com.querydsl:querydsl-jpa:${queryDslVersion}"
+	implementation "com.querydsl:querydsl-apt:${queryDslVersion}"
 
-	implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter'
+	implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.8.0'
 
 }
 
@@ -48,6 +55,9 @@ sourceSets {
 	main.java.srcDir querydslDir
 }
 configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
 	querydsl.extendsFrom compileClasspath
 }
 compileQuerydsl {
