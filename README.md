@@ -87,3 +87,57 @@ On 절을 활용하면 다음 두가지 기능을 사용할 수 있다
   - 서브쿼리를 join 으로 변경
   - 어플리케이션상에서 쿼리를 2번 분리해서 실행한다
   - native query 를 사용한다
+
+---
+
+## 중급 문법
+
+### DTO 로 조회
+
+일반적인 코드에서 Repository 까지는 엔티티를 가지고 사용해도 무방하지만,
+Service 나 Controller 는 Repository 에 의존적으로 설계하면 안되기 때문에 DTO 를 통해 핸들링하는 것을 권장한다. 
+
+JPQL 이나 순수 JPA 를 이용한 DTO 를 조회하는 코드는 new 명령어를 사용해야한다.
+```text
+em
+    .createQuery("select new study.querydsl.dto.MemberDto(m.username, m.age) from Member m", MemberDto.class)
+    .getResultList();
+```
+- DTO package 이름을 다 적어줘야해서 사용하기 불편하며 복잡하다
+- 생성자 방식만 지원한다
+
+### Querydsl 빈 생성 (Bean population)
+
+- 프로퍼티 접근(Setter)
+```text
+Projections.bean(
+    MemberDto.class,
+    member.username,
+    member.age)
+```
+- 필드 직접 접근(No Setter)
+```text
+Projections.fields(
+  MemberDto.class,
+  member.username,
+  member.age)
+```
+- 생성자 사용
+```text
+Projections.constructor(
+  MemberDto.class,
+  member.username,
+  member.age)
+```
+- `@QueryProjection` 사용
+  - Dto 에 `@QueryProjection` 어노테이션을 추가하고 querydsl 을 컴파일하면 DTO 의 Q 파일이 생성된다
+  - 이 Q 파일을 이용해 new 명령어와 함께 사용하는 편리한 방법
+  - 생성자 사용 방법과 차이점
+    - 생성자 사용법은 만약 생성자의 파라미터보다 많거나 적은 수의 값이 들어가도 `컴파일이 아닌 런타임에 오류`를 발생한다
+    - @QueryProjection 은 컴파일 오류를 발생시켜서 실수를 줄일 수 있다
+  - 단점
+    - Q 파일을 생성해야한다
+    - Dto 가 Querydsl 에 대한 의존관계가 생겨버린다
+    - 즉, 만약 Querydsl 을 제거하게 된다면 이 dto 를 사용한 코드를 모두 변경해야함
+    - 또한, 컨트롤러나 서비스에서 이 dto 가 계속 사용되는데, dto 안에 @QueryProjection 들어간 상태로 동작하기에 아키텍쳐적 관점에서 문제가 있을 수 있음
+  - 만약 Dto 를 깔끔하고 의존적이여도 된다면 이 방법이 가장 좋은 방법이다

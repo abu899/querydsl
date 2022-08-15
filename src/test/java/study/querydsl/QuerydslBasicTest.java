@@ -7,6 +7,8 @@ import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,419 +53,456 @@ public class QuerydslBasicTest {
         em.persist(member4);
     }
 
-    @Test
-    void startJPQL() {
-        String qlString = "select m from Member m where m.username = :username";
-        Member findMember = em.createQuery(qlString, Member.class)
-                .setParameter("username", "member1")
-                .getSingleResult();
+    @Nested
+    @DisplayName("What is Querydsl")
+    class SimpleQuerydslTest {
+        @Test
+        void startJPQL() {
+            String qlString = "select m from Member m where m.username = :username";
+            Member findMember = em.createQuery(qlString, Member.class)
+                    .setParameter("username", "member1")
+                    .getSingleResult();
 
-        assertThat(findMember.getUsername()).isEqualTo("member1");
+            assertThat(findMember.getUsername()).isEqualTo("member1");
+        }
+
+        @Test
+        void startQuerydsl() {
+            QMember m = new QMember("m");
+
+            Member findMember = queryFactory
+                    .select(m)
+                    .from(m)
+                    .where(m.username.eq("member1"))
+                    .fetchOne();
+
+            assertThat(findMember.getUsername()).isEqualTo("member1");
+        }
     }
 
-    @Test
-    void startQuerydsl() {
-        QMember m = new QMember("m");
+    @Nested
+    @DisplayName("Search")
+    class SearchTest {
+        @Test
+        void search() {
+            Member findMember = queryFactory
+                    .selectFrom(member)
+                    .where(member.username.eq("member1")
+                            .and(member.age.between(10, 30)))
+                    .fetchOne();
 
-        Member findMember = queryFactory
-                .select(m)
-                .from(m)
-                .where(m.username.eq("member1"))
-                .fetchOne();
+            assertThat(findMember.getUsername()).isEqualTo("member1");
+            assertThat(findMember.getAge()).isEqualTo(10);
+        }
 
-        assertThat(findMember.getUsername()).isEqualTo("member1");
+        @Test
+        void searchAndParam() {
+            Member findMember = queryFactory
+                    .selectFrom(member)
+                    .where(
+                            member.username.eq("member1"), // and 인 경우에는 , 로 바꿀 수 있다
+                            (member.age.eq(10)))
+                    .fetchOne();
+
+            assertThat(findMember.getUsername()).isEqualTo("member1");
+            assertThat(findMember.getAge()).isEqualTo(10);
+        }
     }
 
-    @Test
-    void search() {
-        Member findMember = queryFactory
-                .selectFrom(member)
-                .where(member.username.eq("member1")
-                        .and(member.age.between(10, 30)))
-                .fetchOne();
+    @Nested
+    @DisplayName("Fetch")
+    class FetchTest {
+        @Test
+        void fetch() {
+            List<Member> fetch = queryFactory
+                    .selectFrom(member)
+                    .fetch();
 
-        assertThat(findMember.getUsername()).isEqualTo("member1");
-        assertThat(findMember.getAge()).isEqualTo(10);
+            Member fetchOne = queryFactory
+                    .selectFrom(QMember.member)
+                    .fetchOne();
+
+            Member fetchFirst = queryFactory
+                    .selectFrom(QMember.member)
+                    .fetchFirst();
+
+            /**
+             * 현재 deprecate
+             * fetch를 통해 데이터를 가져오고 list 의 사이즈를 통해 사용하기를 권장한다
+             * 복잡하고 성능이 중요한 경우는 쿼리를 따로 날려야한다고 함
+             */
+            QueryResults<Member> results = queryFactory
+                    .selectFrom(member)
+                    .fetchResults(); // 쿼리가 두번나간다..
+        }
     }
 
-    @Test
-    void searchAndParam() {
-        Member findMember = queryFactory
-                .selectFrom(member)
-                .where(
-                        member.username.eq("member1"), // and 인 경우에는 , 로 바꿀 수 있다
-                        (member.age.eq(10)))
-                .fetchOne();
+    @Nested
+    @DisplayName("Sort and Paging")
+    class SortPagingTest {
+        @Test
+        void sort() {
+            em.persist(new Member(null, 100));
+            em.persist(new Member("member5", 100));
+            em.persist(new Member("member6", 100));
 
-        assertThat(findMember.getUsername()).isEqualTo("member1");
-        assertThat(findMember.getAge()).isEqualTo(10);
+            List<Member> result = queryFactory
+                    .selectFrom(member)
+                    .where(member.age.eq(100))
+                    .orderBy(member.age.desc(), member.username.asc().nullsLast())
+                    .fetch();
+
+            Member member5 = result.get(0);
+            Member member6 = result.get(1);
+            Member memberNull = result.get(2);
+            assertThat(member5.getUsername()).isEqualTo("member5");
+            assertThat(member6.getUsername()).isEqualTo("member6");
+            assertThat(memberNull.getUsername()).isNull();
+        }
+
+        @Test
+        void paging1() {
+            List<Member> result = queryFactory
+                    .selectFrom(member)
+                    .orderBy(member.username.desc())
+                    .offset(1)
+                    .limit(2)
+                    .fetch();
+
+            assertThat(result.size()).isEqualTo(2);
+        }
+
+        @Test
+        void paging2() {
+            QueryResults<Member> queryResults = queryFactory
+                    .selectFrom(member)
+                    .orderBy(member.username.desc())
+                    .offset(1)
+                    .limit(2)
+                    .fetchResults();
+
+            assertThat(queryResults.getTotal()).isEqualTo(4);
+            assertThat(queryResults.getLimit()).isEqualTo(2);
+            assertThat(queryResults.getOffset()).isEqualTo(1);
+            assertThat(queryResults.getResults().size()).isEqualTo(2);
+        }
     }
 
-    @Test
-    void fetch() {
-        List<Member> fetch = queryFactory
-                .selectFrom(member)
-                .fetch();
+    @Nested
+    @DisplayName("Aggregation")
+    class AggregationTest {
+        @Test
+        void aggregation() {
+            List<Tuple> result = queryFactory
+                    .select(
+                            member.count(),
+                            member.age.sum(),
+                            member.age.avg(),
+                            member.age.max(),
+                            member.age.min()
+                    )
+                    .from(member)
+                    .fetch();
 
-        Member fetchOne = queryFactory
-                .selectFrom(QMember.member)
-                .fetchOne();
-
-        Member fetchFirst = queryFactory
-                .selectFrom(QMember.member)
-                .fetchFirst();
+            Tuple tuple = result.get(0);
+            assertThat(tuple.get(member.count())).isEqualTo(4);
+            assertThat(tuple.get(member.age.sum())).isEqualTo(100);
+            assertThat(tuple.get(member.age.avg())).isEqualTo(25);
+            assertThat(tuple.get(member.age.max())).isEqualTo(40);
+            assertThat(tuple.get(member.age.min())).isEqualTo(10);
+        }
 
         /**
-         * 현재 deprecate
-         * fetch를 통해 데이터를 가져오고 list 의 사이즈를 통해 사용하기를 권장한다
-         * 복잡하고 성능이 중요한 경우는 쿼리를 따로 날려야한다고 함
+         * 팀의 이름과 각 팀의 평균 연령
          */
-        QueryResults<Member> results = queryFactory
-                .selectFrom(member)
-                .fetchResults(); // 쿼리가 두번나간다..
-    }
+        @Test
+        void groupBy() {
+            List<Tuple> result = queryFactory
+                    .select(team.name, member.age.avg())
+                    .from(member)
+                    .join(member.team, team)
+                    .groupBy(team.name)
+                    .fetch();
 
-    @Test
-    void sort() {
-        em.persist(new Member(null, 100));
-        em.persist(new Member("member5", 100));
-        em.persist(new Member("member6", 100));
+            Tuple teamA = result.get(0);
+            Tuple teamB = result.get(1);
 
-        List<Member> result = queryFactory
-                .selectFrom(member)
-                .where(member.age.eq(100))
-                .orderBy(member.age.desc(), member.username.asc().nullsLast())
-                .fetch();
+            assertThat(teamA.get(team.name)).isEqualTo("teamA");
+            assertThat(teamA.get(member.age.avg())).isEqualTo(15);
 
-        Member member5 = result.get(0);
-        Member member6 = result.get(1);
-        Member memberNull = result.get(2);
-        assertThat(member5.getUsername()).isEqualTo("member5");
-        assertThat(member6.getUsername()).isEqualTo("member6");
-        assertThat(memberNull.getUsername()).isNull();
-    }
-
-    @Test
-    void paging1() {
-        List<Member> result = queryFactory
-                .selectFrom(member)
-                .orderBy(member.username.desc())
-                .offset(1)
-                .limit(2)
-                .fetch();
-
-        assertThat(result.size()).isEqualTo(2);
-    }
-
-    @Test
-    void paging2() {
-        QueryResults<Member> queryResults = queryFactory
-                .selectFrom(member)
-                .orderBy(member.username.desc())
-                .offset(1)
-                .limit(2)
-                .fetchResults();
-
-        assertThat(queryResults.getTotal()).isEqualTo(4);
-        assertThat(queryResults.getLimit()).isEqualTo(2);
-        assertThat(queryResults.getOffset()).isEqualTo(1);
-        assertThat(queryResults.getResults().size()).isEqualTo(2);
-    }
-
-    @Test
-    void aggregation() {
-        List<Tuple> result = queryFactory
-                .select(
-                        member.count(),
-                        member.age.sum(),
-                        member.age.avg(),
-                        member.age.max(),
-                        member.age.min()
-                )
-                .from(member)
-                .fetch();
-
-        Tuple tuple = result.get(0);
-        assertThat(tuple.get(member.count())).isEqualTo(4);
-        assertThat(tuple.get(member.age.sum())).isEqualTo(100);
-        assertThat(tuple.get(member.age.avg())).isEqualTo(25);
-        assertThat(tuple.get(member.age.max())).isEqualTo(40);
-        assertThat(tuple.get(member.age.min())).isEqualTo(10);
-    }
-
-    /**
-     * 팀의 이름과 각 팀의 평균 연령
-     */
-    @Test
-    void groupBy() {
-        List<Tuple> result = queryFactory
-                .select(team.name, member.age.avg())
-                .from(member)
-                .join(member.team, team)
-                .groupBy(team.name)
-                .fetch();
-
-        Tuple teamA = result.get(0);
-        Tuple teamB = result.get(1);
-
-        assertThat(teamA.get(team.name)).isEqualTo("teamA");
-        assertThat(teamA.get(member.age.avg())).isEqualTo(15);
-
-        assertThat(teamB.get(team.name)).isEqualTo("teamB");
-        assertThat(teamB.get(member.age.avg())).isEqualTo(35);
-    }
-
-    /**
-     * 팀 A에 소속된 모든 회원
-     */
-    @Test
-    void basicJoin() {
-        List<Member> result = queryFactory
-                .selectFrom(member)
-                .join(member.team, team) // 기본 innerJoin
-                .where(team.name.eq("teamA"))
-                .fetch();
-
-        assertThat(result)
-                .extracting("username")
-                .containsExactly("member1", "member2");
-    }
-
-    @Test
-    void thetaJoin() {
-        em.persist(new Member("teamA"));
-        em.persist(new Member("teamB"));
-        em.persist(new Member("teamC"));
-
-        List<Member> result = queryFactory
-                .select(member)
-                .from(member, team)
-                .where(member.username.eq(team.name))
-                .fetch();
-
-        assertThat(result)
-                .extracting("username")
-                .containsExactly("teamA", "teamB");
-    }
-
-    /**
-     * 회원과 팀을 조인하면서,
-     * 팀 이름이 teamA인 팀만 조인, 회원은 모두 조회
-     * JPQL: select m, t from Member m left join m.team t on t.name = 'teamA'
-     */
-    @Test
-    void joinOnFiltering() {
-        List<Tuple> result = queryFactory
-                .select(member, team)
-                .from(member)
-                .leftJoin(member.team, team)
-                .on(team.name.eq("teamA"))
-                .fetch();
-
-        for (Tuple tuple : result) {
-            System.out.println("tuple = " + tuple);
+            assertThat(teamB.get(team.name)).isEqualTo("teamB");
+            assertThat(teamB.get(member.age.avg())).isEqualTo(35);
         }
     }
 
-    /**
-     * 연관관계가 없는 엔티티간의 외부 조인
-     */
-    @Test
-    void outerJoinWithNoRelation() {
-        em.persist(new Member("teamA"));
-        em.persist(new Member("teamB"));
-        em.persist(new Member("teamC"));
 
-        List<Tuple> result = queryFactory
-                .select(member, team)
-                .from(member)
-                .leftJoin(team).on(member.username.eq(team.name)) // 기존 join 과 사용하는 방식이 다르다!! id 매칭없이 막조인!
-                .fetch();
+    @Nested
+    @DisplayName("Join")
+    class JoinTest {
+        /**
+         * 팀 A에 소속된 모든 회원
+         */
+        @Test
+        void basicJoin() {
+            List<Member> result = queryFactory
+                    .selectFrom(member)
+                    .join(member.team, team) // 기본 innerJoin
+                    .where(team.name.eq("teamA"))
+                    .fetch();
 
-        for (Tuple tuple : result) {
-            System.out.println("tuple = " + tuple);
+            assertThat(result)
+                    .extracting("username")
+                    .containsExactly("member1", "member2");
         }
-        assertThat(result)
-                .extracting("username")
-                .containsExactly("teamA", "teamB");
-    }
 
-    @PersistenceContext
-    EntityManagerFactory emf;
+        @Test
+        void thetaJoin() {
+            em.persist(new Member("teamA"));
+            em.persist(new Member("teamB"));
+            em.persist(new Member("teamC"));
 
-    @Test
-    void fetchJoinNotApplied() {
-        em.flush();
-        em.clear();
+            List<Member> result = queryFactory
+                    .select(member)
+                    .from(member, team)
+                    .where(member.username.eq(team.name))
+                    .fetch();
 
-        Member findMember = queryFactory
-                .selectFrom(member)
-                .where(member.username.eq("member1"))
-                .fetchOne();
+            assertThat(result)
+                    .extracting("username")
+                    .containsExactly("teamA", "teamB");
+        }
 
-        boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());
-        assertThat(loaded).as("fetch join not applied").isFalse();
-    }
+        /**
+         * 회원과 팀을 조인하면서,
+         * 팀 이름이 teamA인 팀만 조인, 회원은 모두 조회
+         * JPQL: select m, t from Member m left join m.team t on t.name = 'teamA'
+         */
+        @Test
+        void joinOnFiltering() {
+            List<Tuple> result = queryFactory
+                    .select(member, team)
+                    .from(member)
+                    .leftJoin(member.team, team)
+                    .on(team.name.eq("teamA"))
+                    .fetch();
 
-    @Test
-    void fetchJoinApplied() {
-        em.flush();
-        em.clear();
+            for (Tuple tuple : result) {
+                System.out.println("tuple = " + tuple);
+            }
+        }
 
-        Member findMember = queryFactory
-                .selectFrom(member)
-                .join(member.team, team).fetchJoin()
-                .where(member.username.eq("member1"))
-                .fetchOne();
+        /**
+         * 연관관계가 없는 엔티티간의 외부 조인
+         */
+        @Test
+        void outerJoinWithNoRelation() {
+            em.persist(new Member("teamA"));
+            em.persist(new Member("teamB"));
+            em.persist(new Member("teamC"));
 
-        boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());
-        assertThat(loaded).as("fetch join applied").isTrue();
-    }
+            List<Tuple> result = queryFactory
+                    .select(member, team)
+                    .from(member)
+                    .leftJoin(team).on(member.username.eq(team.name)) // 기존 join 과 사용하는 방식이 다르다!! id 매칭없이 막조인!
+                    .fetch();
 
-    /**
-     * 나이가 가장 많은 회원 조회
-     */
-    @Test
-    void subQuery() {
-
-        QMember memberSub = new QMember("memberSub");
-
-        List<Member> result = queryFactory
-                .selectFrom(member)
-                .where(
-                        member.age.eq(
-                                JPAExpressions
-                                        .select(memberSub.age.max())
-                                        .from(memberSub)
-                        )
-                )
-                .fetch();
-
-        assertThat(result).extracting("age")
-                .containsExactly(40);
-    }
-
-    /**
-     * 나이가 평균 이상인 회원
-     */
-    @Test
-    void subQueryGoe() {
-
-        QMember memberSub = new QMember("memberSub");
-
-        List<Member> result = queryFactory
-                .selectFrom(member)
-                .where(
-                        member.age.goe(
-                                JPAExpressions
-                                        .select(memberSub.age.avg())
-                                        .from(memberSub)
-                        )
-                )
-                .fetch();
-
-        assertThat(result).extracting("age")
-                .containsExactly(30, 40);
-    }
-
-    /**
-     * 나이가 평균 이상인 회원
-     */
-    @Test
-    void subQueryIn() {
-
-        QMember memberSub = new QMember("memberSub");
-
-        List<Member> result = queryFactory
-                .selectFrom(member)
-                .where(
-                        member.age.in(
-                                JPAExpressions
-                                        .select(memberSub.age)
-                                        .from(memberSub)
-                                        .where(memberSub.age.gt(10))
-                        )
-                )
-                .fetch();
-
-        assertThat(result).extracting("age")
-                .containsExactly(20, 30, 40);
-    }
-
-    @Test
-    void subQueryInSelectClause() {
-        QMember memberSub = new QMember("memberSub");
-
-        List<Tuple> result = queryFactory
-                .select(member.username,
-                        JPAExpressions
-                                .select(memberSub.age.avg())
-                                .from(memberSub))
-                .from(member)
-                .fetch();
-
-        for (Tuple tuple : result) {
-            System.out.println("tuple = " + tuple);
+            for (Tuple tuple : result) {
+                System.out.println("tuple = " + tuple);
+            }
+            assertThat(result)
+                    .extracting("username")
+                    .containsExactly("teamA", "teamB");
         }
     }
 
-    /**
-     * 왠만해선 이런 조건문을 사용하는걸 권장하지 않는다
-     * 데이터를 줄이는 역할을 해야한다
-     */
-    @Test
-    void basicCase() {
-        List<String> result = queryFactory
-                .select(member.age
-                        .when(10).then("열살")
-                        .when(20).then("스무살")
-                        .otherwise("기타")
-                ).from(member)
-                .fetch();
+    @Nested
+    @DisplayName("FetchJoin")
+    class FetchJoinTest {
+        @PersistenceContext
+        EntityManagerFactory emf;
 
-        for (String s : result) {
-            System.out.println("s = " + s);
+        @Test
+        void fetchJoinNotApplied() {
+            em.flush();
+            em.clear();
+
+            Member findMember = queryFactory
+                    .selectFrom(member)
+                    .where(member.username.eq("member1"))
+                    .fetchOne();
+
+            boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());
+            assertThat(loaded).as("fetch join not applied").isFalse();
+        }
+
+        @Test
+        void fetchJoinApplied() {
+            em.flush();
+            em.clear();
+
+            Member findMember = queryFactory
+                    .selectFrom(member)
+                    .join(member.team, team).fetchJoin()
+                    .where(member.username.eq("member1"))
+                    .fetchOne();
+
+            boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());
+            assertThat(loaded).as("fetch join applied").isTrue();
         }
     }
 
-    @Test
-    void complexCase() {
-        List<String> result = queryFactory
-                .select(new CaseBuilder()
-                        .when(member.age.between(0, 20)).then("0~20살")
-                        .when(member.age.between(21,30)).then("21~30살")
-                        .otherwise("기타"))
-                .from(member)
-                .fetch();
+    @Nested
+    @DisplayName("SubQuery")
+    class SubQueryTest {
+        /**
+         * 나이가 가장 많은 회원 조회
+         */
+        @Test
+        void subQuery() {
 
-        for (String s : result) {
-            System.out.println("s = " + s);
+            QMember memberSub = new QMember("memberSub");
+
+            List<Member> result = queryFactory
+                    .selectFrom(member)
+                    .where(
+                            member.age.eq(
+                                    JPAExpressions
+                                            .select(memberSub.age.max())
+                                            .from(memberSub)
+                            )
+                    )
+                    .fetch();
+
+            assertThat(result).extracting("age")
+                    .containsExactly(40);
+        }
+
+        /**
+         * 나이가 평균 이상인 회원
+         */
+        @Test
+        void subQueryGoe() {
+
+            QMember memberSub = new QMember("memberSub");
+
+            List<Member> result = queryFactory
+                    .selectFrom(member)
+                    .where(
+                            member.age.goe(
+                                    JPAExpressions
+                                            .select(memberSub.age.avg())
+                                            .from(memberSub)
+                            )
+                    )
+                    .fetch();
+
+            assertThat(result).extracting("age")
+                    .containsExactly(30, 40);
+        }
+
+        /**
+         * 나이가 평균 이상인 회원
+         */
+        @Test
+        void subQueryIn() {
+
+            QMember memberSub = new QMember("memberSub");
+
+            List<Member> result = queryFactory
+                    .selectFrom(member)
+                    .where(
+                            member.age.in(
+                                    JPAExpressions
+                                            .select(memberSub.age)
+                                            .from(memberSub)
+                                            .where(memberSub.age.gt(10))
+                            )
+                    )
+                    .fetch();
+
+            assertThat(result).extracting("age")
+                    .containsExactly(20, 30, 40);
+        }
+
+        @Test
+        void subQueryInSelectClause() {
+            QMember memberSub = new QMember("memberSub");
+
+            List<Tuple> result = queryFactory
+                    .select(member.username,
+                            JPAExpressions
+                                    .select(memberSub.age.avg())
+                                    .from(memberSub))
+                    .from(member)
+                    .fetch();
+
+            for (Tuple tuple : result) {
+                System.out.println("tuple = " + tuple);
+            }
         }
     }
 
-    @Test
-    void constant() {
-        List<Tuple> result = queryFactory
-                .select(member.username, Expressions.constant("A"))
-                .from(member)
-                .fetch();
+    @Nested
+    @DisplayName("Case and Constant")
+    class CaseConstantTest {
+        /**
+         * 왠만해선 이런 조건문을 사용하는걸 권장하지 않는다
+         * 데이터를 줄이는 역할을 해야한다
+         */
+        @Test
+        void basicCase() {
+            List<String> result = queryFactory
+                    .select(member.age
+                            .when(10).then("열살")
+                            .when(20).then("스무살")
+                            .otherwise("기타")
+                    ).from(member)
+                    .fetch();
 
-        for (Tuple tuple : result) {
-            System.out.println("tuple = " + tuple);
+            for (String s : result) {
+                System.out.println("s = " + s);
+            }
         }
-    }
 
-    @Test
-    void concat() {
-        //username_age
-        List<String> result = queryFactory
-                .select(member.username.concat("_").concat(member.age.stringValue()))
-                .from(member)
-                .where(member.username.eq("member1"))
-                .fetch();
+        @Test
+        void complexCase() {
+            List<String> result = queryFactory
+                    .select(new CaseBuilder()
+                            .when(member.age.between(0, 20)).then("0~20살")
+                            .when(member.age.between(21, 30)).then("21~30살")
+                            .otherwise("기타"))
+                    .from(member)
+                    .fetch();
 
-        for (String s : result) {
-            System.out.println("s = " + s);
+            for (String s : result) {
+                System.out.println("s = " + s);
+            }
+        }
+
+        @Test
+        void constant() {
+            List<Tuple> result = queryFactory
+                    .select(member.username, Expressions.constant("A"))
+                    .from(member)
+                    .fetch();
+
+            for (Tuple tuple : result) {
+                System.out.println("tuple = " + tuple);
+            }
+        }
+
+        @Test
+        void concat() {
+            //username_age
+            List<String> result = queryFactory
+                    .select(member.username.concat("_").concat(member.age.stringValue()))
+                    .from(member)
+                    .where(member.username.eq("member1"))
+                    .fetch();
+
+            for (String s : result) {
+                System.out.println("s = " + s);
+            }
         }
     }
 }
