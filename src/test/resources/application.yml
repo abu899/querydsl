@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local
+    active: test
 
   datasource:
     url: jdbc:h2:tcp://localhost/~/querydsl
@@ -20,6 +20,3 @@ spring:
 logging.level:
   org.hibernate.SQL: debug
   org.hibernate.type: trace
-
-server:
-  port: 8081
