@@ -66,6 +66,8 @@ public class MemberRepositoryImpl implements MemberRepositoryCustom {
                         ageGoe(condition.getAgeGoe()),
                         ageLoe(condition.getAgeLoe())
                 )
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
                 .fetchResults();
 
         List<MemberTeamDto> content = results.getResults();
@@ -92,10 +94,13 @@ public class MemberRepositoryImpl implements MemberRepositoryCustom {
                         ageGoe(condition.getAgeGoe()),
                         ageLoe(condition.getAgeLoe())
                 )
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
                 .fetch();
 
-        JPAQuery<Member> countQuery = queryFactory
-                .selectFrom(member)
+        JPAQuery<Long> countQuery = queryFactory
+                .select(member.count())
+                .from(member)
                 .leftJoin(member.team, team)
                 .where(
                         userNameEq(condition.getUsername()),
@@ -105,7 +110,7 @@ public class MemberRepositoryImpl implements MemberRepositoryCustom {
                 );
 
 //        return new PageImpl<>(content, pageable, totalCount);
-        return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchCount);
+        return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
 
     private BooleanExpression userNameEq(String name) {

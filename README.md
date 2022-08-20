@@ -141,3 +141,44 @@ Projections.constructor(
     - 즉, 만약 Querydsl 을 제거하게 된다면 이 dto 를 사용한 코드를 모두 변경해야함
     - 또한, 컨트롤러나 서비스에서 이 dto 가 계속 사용되는데, dto 안에 @QueryProjection 들어간 상태로 동작하기에 아키텍쳐적 관점에서 문제가 있을 수 있음
   - 만약 Dto 를 깔끔하고 의존적이여도 된다면 이 방법이 가장 좋은 방법이다
+
+---
+
+## Spring Data JPA 가 제공하는 Querydsl
+
+### QuerydslPredicateExecutor
+
+Repository 에 `QuerydslPredicateExecutor<T>`를 implement 시켜서 사용한다
+
+- 장점
+  - findBy, findAll 등에 Querydsl 조건을 넣어서 사용가능하다
+- 단점
+  - 조인이 불가능하다
+    - 묵시적 조인은 가능하지만 left join 불가
+  - 클라이언트가 Querydsl 에 의존한다.
+    - 즉 서비스나 컨트롤러에서 Querydsl 의 predicate 를 넘겨줘야하기에 Querydsl 에 의존하게된다.
+    - Repository 를 만들고 구체화된 기술을 숨겨서 서비스 계층에는 구체화된 기술에 의존하지 않게하는 것이 좋다.
+
+### Querydsl Web
+
+`@QuerydslPredicate` 를 파라미터에 넣어 들어온 파라미터들을 바인딩하여 Querydsl 형태로 제공
+
+- 단점
+  - 단순한 조건만 가능(eq)
+  - 조건 커스텀하는 기능이 복잡하고 명시적이지 않음
+- reference
+  - https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#core.web.type-safe
+
+### QuerydslRepositorySupport
+
+`QuerydslRepositorySupport`를 Repository 에 extend 시켜서 사용한다.
+
+- 장점
+  - `entityManager` 와 `queryDsl` 이라는 Utility 클래스를 제공
+    - entityManager 자동 주입 및 설정을 추상클래스에서 해줌
+  - 페이징을 편리하게 해줌
+    - offset 및 limit 을 직접 삽입하는게 아닌, `getQuerydsl().applyPagination(pageable, JPQLQuery)` 형식으로 넣는다
+- 단점
+  - Querydsl 3.x 버전을 대상으로 만듬
+  - QueryFactory 를 제공하지 않음
+  - 스프링 데이터 Sort 기능이 정상동작하지 않음(버그인듯?)
